@@ -10,14 +10,16 @@ from transformers import AutoTokenizer, MT5ForConditionalGeneration, MT5Tokenize
 from datasets import load_dataset, load_metric
 import numpy as np
 import torch
-
+torch.cuda.empty_cache()
+import os
+#os.environ['CUDA_VISIBLE_DEVICES']='1'
 torch.manual_seed(0)
 
 NUM_EPOCHS = 3 if torch.cuda.is_available() else 1
-PERCENTILES = (95, 100) if torch.cuda.is_available() else (80, 100)
+PERCENTILES = (80, 100)
 
-TRAIN_BATCH_SIZE = 16
-EVAL_BATCH_SIZE = 64
+TRAIN_BATCH_SIZE = 1
+EVAL_BATCH_SIZE = 1
 WARMUP_STEPS = 200
 WEIGHT_DECAY = 0.01
 LOGGING_STEPS = 100
@@ -38,11 +40,14 @@ LEARNING_RATE = 5e-05
  'upos': Sequence(feature=ClassLabel(num_classes=18, names=['NOUN', 'PUNCT', 'ADP', 'NUM', 'SYM', 'SCONJ', 'ADJ', 'PART', 'DET', 'CCONJ', 'PROPN', 'PRON', 'X', '_', 'ADV', 'INTJ', 'VERB', 'AUX'], names_file=None, id=None), length=-1, id=None),
  'xpos': Sequence(feature=Value(dtype='string', id=None), length=-1, id=None)}'''
 
+
 UPOS_NAME = ['NOUN', 'PUNCT', 'ADP', 'NUM', 'SYM', 'SCONJ', 'ADJ', 'PART', 'DET', 'CCONJ', 'PROPN', 'PRON', 'X', '_', 'ADV', 'INTJ', 'VERB', 'AUX']
+
 
 def reformat_for_seg(example):
     example['tgt_texts'] = '_'.join(example['tokens']) #convert it to a str
     return example
+
 
 def reformat_for_postag(example):
     pairs = zip(example['tokens'],example['upos'])
@@ -53,6 +58,7 @@ def reformat_for_postag(example):
     example['tgt_texts'] = '/'.join(nl)
     return example
 
+
 def get_max_length(tokenizer, train_dataset, column, percentile):
     def get_lengths(batch):
         return tokenizer(batch, padding=False, return_length=True)
@@ -60,20 +66,21 @@ def get_max_length(tokenizer, train_dataset, column, percentile):
     lengths = train_dataset.map(get_lengths, input_columns=column, batched=True)['length']
     return int(np.percentile(lengths, percentile)) +1
 
-tokenizer = MT5TokenizerFast.from_pretrained('google/mt5-small')
+
+tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
 dataset = load_dataset('universal_dependencies','zh_gsdsimp')
 
-#dataset = dataset.map(reformat_for_seg)
 dataset = dataset.map(reformat_for_postag)
+#dataset.save_to_disk()
 print(dataset['train']['tgt_texts'][:10])
-
-#train, test, val=dataset['train'],dataset['test'],dataset['validation']
 
 #model_name = "allenai/unifiedqa-t5-small" # you can specify the model size here
 #tokenizer = AutoTokenizer.from_pretrained(model_name)
 
+
 max_length = get_max_length(tokenizer, dataset['train'], 'text', PERCENTILES[0])
 max_target_length = get_max_length(tokenizer, dataset['train'], 'tgt_texts', PERCENTILES[1])
+
 
 def tokenize(batch): 
     return tokenizer.prepare_seq2seq_batch(src_texts=batch['text'], 
@@ -90,7 +97,7 @@ print(dataset['train']['input_ids'][:3])
 print(tokenizer.batch_decode(dataset['train']['labels'][:3][:10]))
 
 
-#from IPython import embed; embed()
+#from IPython import embed
 
 def ud_metrics(eval_prediction): # write a new one with F1 or sth else
     predictions = tokenizer.batch_decode(eval_prediction.predictions,
@@ -102,12 +109,16 @@ def ud_metrics(eval_prediction): # write a new one with F1 or sth else
                  for i, pred in enumerate(predictions)]
     references = [{'id': str(i), 'reference': ref.strip().lower()} \
                 for i, ref in enumerate(references)]
-    metric = load_metric('/mymetric.py')
+
+    '''metric = load_metric('/mymetric.py')
     metric.add_batch(predictions=predictions, references=references)
-    
+    '''
     return metric.compute()
 
-model = MT5ForConditionalGeneration.from_pretrained("google/mt5-small")
+model = MT5ForConditionalGeneration.from_pretrained("mt5")
+device = torch.device("cpu")
+model.to(device)
+print(next(model.parameters()).device)
 
 training_args = Seq2SeqTrainingArguments(
     output_dir='./results',
@@ -131,7 +142,7 @@ trainer = Seq2SeqTrainer(
     eval_dataset=dataset['validation'],
 #    compute_metrics=ud_metrics
 )
-#val is possibly wrong
+
 #print(trainer.evaluate(num_beams=2))
 '''  File "/home/di/Desktop/thesis/postag_udp.py", line 132, in <module>
     print(trainer.evaluate(num_beams=2))
@@ -154,7 +165,13 @@ trainer = Seq2SeqTrainer(
 ValueError: You should supply an encoding or a list of encodings to this methodthat includes input_ids, but you provided []
 '''
 print('enter training')
-trainer.train()
+
+try:
+    trainer.train()
+except RuntimeError:
+    embed()
+
 print(trainer.evaluate())
 print(trainer.evaluate(num_beams=2))
 
+#C:\Users\El\.cache\huggingface\datasets\squad\plain_text\1.0.0\4
