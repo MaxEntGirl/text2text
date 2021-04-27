@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 
 from transformers import AutoTokenizer, MT5ForConditionalGeneration, MT5TokenizerFast, Seq2SeqTrainer, Seq2SeqTrainingArguments
-'''from transformers import (
-    AdamW,
-    MT5ForConditionalGeneration,
-    AutoTokenizer,
-    get_linear_schedule_with_warmup
-)'''
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
 from datasets import load_dataset, load_metric
 import numpy as np
 import torch
@@ -14,12 +10,13 @@ torch.cuda.empty_cache()
 import os
 #os.environ['CUDA_VISIBLE_DEVICES']='1'
 torch.manual_seed(0)
-
+import sys
+sys.path.append('/home/di/Desktop/thesis/')
 NUM_EPOCHS = 3 if torch.cuda.is_available() else 1
 PERCENTILES = (80, 100)
 
-TRAIN_BATCH_SIZE = 1
-EVAL_BATCH_SIZE = 1
+TRAIN_BATCH_SIZE = 16
+EVAL_BATCH_SIZE = 64
 WARMUP_STEPS = 200
 WEIGHT_DECAY = 0.01
 LOGGING_STEPS = 100
@@ -67,9 +64,9 @@ def get_max_length(tokenizer, train_dataset, column, percentile):
     return int(np.percentile(lengths, percentile)) +1
 
 
-tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
+tokenizer = MT5TokenizerFast.from_pretrained('/home/di/Desktop/thesis/mt5tokenzier')
 dataset = load_dataset('universal_dependencies','zh_gsdsimp')
-
+from IPython import embed; embed()
 dataset = dataset.map(reformat_for_postag)
 #dataset.save_to_disk()
 print(dataset['train']['tgt_texts'][:10])
@@ -87,7 +84,7 @@ def tokenize(batch):
                                          tgt_texts=batch['tgt_texts'], 
                                          max_length=max_length, 
                                          truncation=True,
-                                         max_target_length=max_target_length, 
+                                         max_target_length=32,
                                          padding='max_length')
 
 dataset = dataset.map(tokenize, batched=True)
@@ -97,9 +94,10 @@ print(dataset['train']['input_ids'][:3])
 print(tokenizer.batch_decode(dataset['train']['labels'][:3][:10]))
 
 
-#from IPython import embed
+#from IPython import embed; embed()
 
 def ud_metrics(eval_prediction): # write a new one with F1 or sth else
+
     predictions = tokenizer.batch_decode(eval_prediction.predictions,
                                        skip_special_tokens=True) 
     references = tokenizer.batch_decode(eval_prediction.label_ids,
@@ -113,9 +111,10 @@ def ud_metrics(eval_prediction): # write a new one with F1 or sth else
     '''metric = load_metric('/mymetric.py')
     metric.add_batch(predictions=predictions, references=references)
     '''
-    return metric.compute()
 
-model = MT5ForConditionalGeneration.from_pretrained("mt5")
+
+
+model = MT5ForConditionalGeneration.from_pretrained('mt5small')
 device = torch.device("cpu")
 model.to(device)
 print(next(model.parameters()).device)
@@ -140,7 +139,7 @@ trainer = Seq2SeqTrainer(
     args=training_args,
     train_dataset=dataset['train'],
     eval_dataset=dataset['validation'],
-#    compute_metrics=ud_metrics
+    compute_metrics=ud_metrics
 )
 
 #print(trainer.evaluate(num_beams=2))
@@ -166,10 +165,8 @@ ValueError: You should supply an encoding or a list of encodings to this methodt
 '''
 print('enter training')
 
-try:
-    trainer.train()
-except RuntimeError:
-    embed()
+trainer.train()
+
 
 print(trainer.evaluate())
 print(trainer.evaluate(num_beams=2))

@@ -1,4 +1,4 @@
-from transformers import dataset
+import datasets
 from collections import Counter
 _CITATION = None
 _DESCRIPTION = None
@@ -14,7 +14,6 @@ def f1_score(prediction, ground_truth):
     recall = 1.0 * num_same / len(ground_truth)
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
-
 
 
 class Universal_Dependency(datasets.Metric):
