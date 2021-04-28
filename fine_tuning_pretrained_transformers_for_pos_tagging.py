@@ -5,10 +5,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from torchtext import data
-from torchtext import datasets
+from torchtext.legacy import data
+from torchtext.legacy import datasets
 
-from transformers import BertTokenizer, BertModel
+from transformers import BertTokenizer, BertModel,MT5TokenizerFast
 
 import numpy as np
 
@@ -28,13 +28,19 @@ torch.backends.cudnn.deterministic = True
 In order to use pretrained models for NLP the vocabulary used needs to exactly match that of the pretrained model.
 """
 
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
+init_token = tokenizer.cls_token
+pad_token = tokenizer.pad_token
+unk_token = tokenizer.unk_token
+init_token_idx = tokenizer.convert_tokens_to_ids(init_token)
+pad_token_idx = tokenizer.convert_tokens_to_ids(pad_token)
+unk_token_idx = tokenizer.convert_tokens_to_ids(unk_token)
 
-
+#from IPython import embed; embed()
 """One other thing is that the pretrained model was trained on sequences up to a maximum length and we need to ensure that our sequences are also trimmed to this length."""
 
-max_input_length = tokenizer.max_model_input_sizes['bert-base-uncased']
-
+#max_input_length = tokenizer.max_model_input_sizes['google/mt5-small']
+max_input_length = 100
 print(max_input_length)
 
 """Next, we'll define two helper functions that make use of our vocabulary.
@@ -89,6 +95,7 @@ fields = (("text", TEXT), ("udtags", UD_TAGS))
 """Next, we load the data using our fields."""
 
 train_data, valid_data, test_data = datasets.UDPOS.splits(fields)
+train_data, valid_data, test_data = datasets.UDPOS.splits(fields)
 
 """We can check an example by printing it. As we have already numericalized our `text` using the vocabulary of the pretrained model, it is already a sequence of integers. The tags have yet to be numericalized. """
 
@@ -99,7 +106,7 @@ print(vars(train_data.examples[0]))
 UD_TAGS.build_vocab(train_data)
 
 print(UD_TAGS.vocab.stoi)
-
+#from IPython import embed; embed()
 """Next, we'll define our iterators. This will define how batches of data are provided when training. We set a batch size and define `device`, which will automatically put our batch on to the GPU, if we have one.
 
 The BERT model is quite large, so the batch size here is usually smaller than usual. However, the BERT paper itself mentions how they also fine-tuned using small batch sizes, so this shouldn't cause too much of an issue.
@@ -148,7 +155,7 @@ class BERTPoSTagger(nn.Module):
         #text = [sent len, batch size]
     
         text = text.permute(1, 0)
-        
+
         #text = [batch size, sent len]
         
         embedded = self.dropout(self.bert(text)[0])
