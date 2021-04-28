@@ -6,6 +6,7 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_sc
 from datasets import load_dataset, load_metric
 import numpy as np
 import torch
+from collections import Counter
 torch.cuda.empty_cache()
 import os
 #os.environ['CUDA_VISIBLE_DEVICES']='1'
@@ -15,8 +16,8 @@ sys.path.append('/home/di/Desktop/thesis/')
 NUM_EPOCHS = 3 if torch.cuda.is_available() else 1
 PERCENTILES = (80, 100)
 
-TRAIN_BATCH_SIZE = 16
-EVAL_BATCH_SIZE = 64
+TRAIN_BATCH_SIZE = 8
+EVAL_BATCH_SIZE = 8
 WARMUP_STEPS = 200
 WEIGHT_DECAY = 0.01
 LOGGING_STEPS = 100
@@ -61,12 +62,13 @@ def get_max_length(tokenizer, train_dataset, column, percentile):
         return tokenizer(batch, padding=False, return_length=True)
 
     lengths = train_dataset.map(get_lengths, input_columns=column, batched=True)['length']
+    print(int(np.percentile(lengths, percentile)) +1)
     return int(np.percentile(lengths, percentile)) +1
 
 
-tokenizer = MT5TokenizerFast.from_pretrained('/home/di/Desktop/thesis/mt5tokenzier')
+tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
 dataset = load_dataset('universal_dependencies','zh_gsdsimp')
-from IPython import embed; embed()
+#from IPython import embed; embed()
 dataset = dataset.map(reformat_for_postag)
 #dataset.save_to_disk()
 print(dataset['train']['tgt_texts'][:10])
@@ -84,7 +86,7 @@ def tokenize(batch):
                                          tgt_texts=batch['tgt_texts'], 
                                          max_length=max_length, 
                                          truncation=True,
-                                         max_target_length=32,
+                                         max_target_length=45,
                                          padding='max_length')
 
 dataset = dataset.map(tokenize, batched=True)
@@ -107,6 +109,14 @@ def ud_metrics(eval_prediction): # write a new one with F1 or sth else
                  for i, pred in enumerate(predictions)]
     references = [{'id': str(i), 'reference': ref.strip().lower()} \
                 for i, ref in enumerate(references)]
+    common = Counter(predictions) & Counter(references)
+    num_same = sum(common.values())
+    if num_same == 0:
+        return 0
+    precision = 1.0 * num_same / len(predictions)
+    recall = 1.0 * num_same / len(references)
+    f1 = (2 * precision * recall) / (precision + recall)
+    return f1
 
     '''metric = load_metric('/mymetric.py')
     metric.add_batch(predictions=predictions, references=references)
@@ -115,9 +125,9 @@ def ud_metrics(eval_prediction): # write a new one with F1 or sth else
 
 
 model = MT5ForConditionalGeneration.from_pretrained('mt5small')
-device = torch.device("cpu")
+'''device = torch.device("cpu")
 model.to(device)
-print(next(model.parameters()).device)
+print(next(model.parameters()).device)'''
 
 training_args = Seq2SeqTrainingArguments(
     output_dir='./results',
@@ -139,7 +149,7 @@ trainer = Seq2SeqTrainer(
     args=training_args,
     train_dataset=dataset['train'],
     eval_dataset=dataset['validation'],
-    compute_metrics=ud_metrics
+    #compute_metrics=ud_metrics
 )
 
 #print(trainer.evaluate(num_beams=2))

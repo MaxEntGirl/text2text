@@ -9,8 +9,6 @@ import torch
 
 torch.cuda.empty_cache()
 torch.manual_seed(0)
-import sys
-sys.path.append('/home/di/Desktop/thesis/')
 NUM_EPOCHS = 3 if torch.cuda.is_available() else 1
 PERCENTILES = (80, 100)
 
@@ -40,36 +38,35 @@ def read_data(path):
     with open(path, 'r', encoding='utf-8') as f:
         f=f.readlines()
         for line in f:
-            l = line.strip().split()
+            l = line.strip()
             data['tags'].append(l)
             texts = []
-            for pair in l:
+            for pair in l.split():
                 word, _ = pair.split('_')
                 texts.append(word)
-            data['tokens'].append(texts)
+            data['tokens'].append(''.join(texts))
 
     return data
 
 
-def get_max_length(data, percentile):
+def get_max_length(data):
     lengths = [len(i) for i in data]
-    return int(np.percentile(lengths, percentile)) +1
+    return int(np.percentile(lengths, 80)) +1
 
 
 data = read_data('train.txt')
-tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenzier')
+tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
 model = MT5ForConditionalGeneration.from_pretrained('mt5small')
 
-# ----- 1. Preprocess data -----#
-# Preprocess data
+
 X = data["tokens"]
 y = data["tags"]
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2)
-X_train_tokenized = tokenizer(X_train, padding=True, truncation=True, max_length=get_max_length(X_train))
+X_train_tokenized = tokenizer.encode_plus(X_train, padding=True, truncation=True, max_length=get_max_length(X_train))
 X_val_tokenized = tokenizer(X_val, padding=True, truncation=True, max_length=get_max_length(X_val))
+from IPython import embed; embed()
 
 
-# Create torch dataset
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, encodings, labels=None):
         self.encodings = encodings
@@ -84,11 +81,11 @@ class Dataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.encodings["input_ids"])
 
+
 train_dataset = Dataset(X_train_tokenized, y_train)
 val_dataset = Dataset(X_val_tokenized, y_val)
 
-# ----- 2. Fine-tune pretrained model -----#
-# Define Trainer parameters
+
 def compute_metrics(p):
     pred, labels = p
     pred = np.argmax(pred, axis=1)
@@ -101,10 +98,14 @@ def compute_metrics(p):
     return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
 
 
-# Define Trainer
 args = Seq2SeqTrainingArguments(
     output_dir="output",
     evaluation_strategy="steps",
+    weight_decay=0.01,
+    logging_dir='./logs/',
+    logging_steps=100,
+    learning_rate=5e-05,
+    warmup_steps=200,
     eval_steps=500,
     per_device_train_batch_size=8,
     per_device_eval_batch_size=8,
@@ -112,9 +113,11 @@ args = Seq2SeqTrainingArguments(
     save_steps=3000,
     seed=0,
     load_best_model_at_end=True,
+    predict_with_generate=True,
 )
 trainer = Seq2SeqTrainer(
     model=model,
+    tokenizer=tokenizer,
     args=args,
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
@@ -124,7 +127,6 @@ trainer = Seq2SeqTrainer(
 
 # Train pre-trained model
 trainer.train()
-
 
 # Load test data
 test_data = read_data("test.txt")
