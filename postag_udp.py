@@ -16,8 +16,8 @@ sys.path.append('/home/di/Desktop/thesis/')
 NUM_EPOCHS = 3 if torch.cuda.is_available() else 1
 PERCENTILES = (80, 100)
 
-TRAIN_BATCH_SIZE = 8
-EVAL_BATCH_SIZE = 8
+TRAIN_BATCH_SIZE = 1
+EVAL_BATCH_SIZE = 1
 WARMUP_STEPS = 200
 WEIGHT_DECAY = 0.01
 LOGGING_STEPS = 100
@@ -72,7 +72,7 @@ dataset = load_dataset('universal_dependencies','zh_gsdsimp')
 dataset = dataset.map(reformat_for_postag)
 #dataset.save_to_disk()
 print(dataset['train']['tgt_texts'][:10])
-
+from IPython import embed; embed()
 #model_name = "allenai/unifiedqa-t5-small" # you can specify the model size here
 #tokenizer = AutoTokenizer.from_pretrained(model_name)
 

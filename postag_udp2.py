@@ -62,9 +62,11 @@ model = MT5ForConditionalGeneration.from_pretrained('mt5small')
 X = data["tokens"]
 y = data["tags"]
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2)
-X_train_tokenized = tokenizer.encode_plus(X_train, padding=True, truncation=True, max_length=get_max_length(X_train))
-X_val_tokenized = tokenizer(X_val, padding=True, truncation=True, max_length=get_max_length(X_val))
 from IPython import embed; embed()
+X_train_tokenized = tokenizer.encode_plus(X_train, padding=True, truncation=True, max_length=get_max_length(X_train))
+#TextEncodeInput must be Union[TextInputSequence, Tuple[InputSequence, InputSequence]]
+X_val_tokenized = tokenizer.encode_plus(X_val, padding=True, truncation=True, max_length=get_max_length(X_val))
+
 
 
 class Dataset(torch.utils.data.Dataset):
