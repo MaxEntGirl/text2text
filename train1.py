@@ -13,17 +13,17 @@ import os
 torch.manual_seed(0)
 import sys
 sys.path.append('/home/di/Desktop/thesis/')
-NUM_EPOCHS = 3 if torch.cuda.is_available() else 1
+NUM_EPOCHS = 20
 PERCENTILES = (80, 100)
 
-TRAIN_BATCH_SIZE = 1
+TRAIN_BATCH_SIZE = 8         # maybe more stable update with bigger batch, gradient_accumulation_steps trade off with batch size
 EVAL_BATCH_SIZE = 1
 WARMUP_STEPS = 200
-WEIGHT_DECAY = 0.01
+#WEIGHT_DECAY = 0.01
 LOGGING_STEPS = 100
 LEARNING_RATE = 5e-05
 
-
+# baseline
 
 '''dataset['train'].features:
 {'deprel': Sequence(feature=Value(dtype='string', id=None), length=-1, id=None),
@@ -72,21 +72,21 @@ dataset = load_dataset('universal_dependencies','zh_gsdsimp')
 dataset = dataset.map(reformat_for_postag)
 #dataset.save_to_disk()
 print(dataset['train']['tgt_texts'][:10])
-from IPython import embed; embed()
+
 #model_name = "allenai/unifiedqa-t5-small" # you can specify the model size here
 #tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 
 max_length = get_max_length(tokenizer, dataset['train'], 'text', PERCENTILES[0])
 max_target_length = get_max_length(tokenizer, dataset['train'], 'tgt_texts', PERCENTILES[1])
-
+# use unique chr/digits instead of tags
 
 def tokenize(batch): 
     return tokenizer.prepare_seq2seq_batch(src_texts=batch['text'], 
                                          tgt_texts=batch['tgt_texts'], 
                                          max_length=max_length, 
                                          truncation=True,
-                                         max_target_length=45,
+                                         max_target_length=120,
                                          padding='max_length')
 
 dataset = dataset.map(tokenize, batched=True)
@@ -101,28 +101,30 @@ print(tokenizer.batch_decode(dataset['train']['labels'][:3][:10]))
 def ud_metrics(eval_prediction): # write a new one with F1 or sth else
 
     predictions = tokenizer.batch_decode(eval_prediction.predictions,
-                                       skip_special_tokens=True) 
+                                       skip_special_tokens=True)
     references = tokenizer.batch_decode(eval_prediction.label_ids,
                                    skip_special_tokens=True)
-  
-    predictions = [{'id': str(i), 'prediction': pred.strip().lower()} \
+    truep,ref,pred = 0,0,0
+    for p, r in zip(predictions,references):
+        p = set(p.split('/'))
+        r = set(r.split('/'))
+        tp = len(p.intersection(r))
+        truep+=tp
+        ref+=len(r)
+        pred+=len(p)
+
+    precision = truep / pred
+    recall = truep / ref
+    if precision == 0 and recall == 0:
+        f1 = 0
+    else:
+        f1 = (2 * precision * recall) / (precision + recall)
+    return {"precision": precision, "recall": recall, "f1": f1}
+
+'''    predictions = [{'id': str(i), 'prediction': pred.strip().lower()} \
                  for i, pred in enumerate(predictions)]
     references = [{'id': str(i), 'reference': ref.strip().lower()} \
-                for i, ref in enumerate(references)]
-    common = Counter(predictions) & Counter(references)
-    num_same = sum(common.values())
-    if num_same == 0:
-        return 0
-    precision = 1.0 * num_same / len(predictions)
-    recall = 1.0 * num_same / len(references)
-    f1 = (2 * precision * recall) / (precision + recall)
-    return f1
-
-    '''metric = load_metric('/mymetric.py')
-    metric.add_batch(predictions=predictions, references=references)
-    '''
-
-
+                for i, ref in enumerate(references)]'''
 
 model = MT5ForConditionalGeneration.from_pretrained('mt5small')
 '''device = torch.device("cpu")
@@ -135,13 +137,16 @@ training_args = Seq2SeqTrainingArguments(
     per_device_train_batch_size=TRAIN_BATCH_SIZE,
     per_device_eval_batch_size=EVAL_BATCH_SIZE,
     warmup_steps=WARMUP_STEPS,
-    weight_decay=WEIGHT_DECAY,
+#    weight_decay=WEIGHT_DECAY,
     logging_dir='./logs/',
-    evaluation_strategy="steps",
+    evaluation_strategy="epoch",
     logging_steps=LOGGING_STEPS,
     learning_rate=LEARNING_RATE,
     predict_with_generate=True,
 )
+
+model.get_output_embeddings().weight.requires_grad=False
+model.get_input_embeddings().weight.requires_grad=False
 
 trainer = Seq2SeqTrainer(
     model=model,
@@ -149,11 +154,12 @@ trainer = Seq2SeqTrainer(
     args=training_args,
     train_dataset=dataset['train'],
     eval_dataset=dataset['validation'],
-    #compute_metrics=ud_metrics
+#    optimizers=(torch.optim.SGD(model.parameters(),lr=LEARNING_RATE),None),
+    compute_metrics=ud_metrics,   #Must take a:class:`~transformers.EvalPrediction` and return a dictionary string to metric values.
 )
 
 #print(trainer.evaluate(num_beams=2))
-'''  File "/home/di/Desktop/thesis/postag_udp.py", line 132, in <module>
+'''  File "/home/di/Desktop/thesis/train1.py", line 132, in <module>
     print(trainer.evaluate(num_beams=2))
   File "/home/di/anaconda3/lib/python3.7/site-packages/transformers/trainer_seq2seq.py", line 74, in evaluate
     return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)

@@ -1,29 +1,15 @@
-# %% [markdown]
-# This notebook is an example on how to fine tune mT5 model with Higgingface Transformers to solve multilingual task in 101 lanaguges. This notebook especially takes the problem of question generation in hindi lanagues
 
-# %% [code]
-import numpy as np  # linear algebra
-import pandas as pd  # data processing, CSV file I/O (e.g. pd.read_csv)
+import numpy as np
 import os
 
 for dirname, _, filenames in os.walk('/kaggle/input'):
     for filename in filenames:
         print(os.path.join(dirname, filename))
 
-# %% [code]
+
 train = pd.read_csv("../input/xsquad/train.csv")
 
-# %% [code]
-train.shape
 
-# %% [code] {"_kg_hide-input":true,"_kg_hide-output":true}
-# !pip install transformers
-!pip
-install
-pytorch_lightning == 0.8
-.1
-
-# %% [code]
 import argparse
 import glob
 import os
@@ -55,12 +41,7 @@ train.shape
 # %% [code]
 pl.__version__
 
-# %% [code]
-pip
-install
-transformers == 4.0
-.0
-rc1
+
 
 # %% [code]
 from transformers import (
@@ -71,7 +52,6 @@ from transformers import (
 )
 
 
-# %% [code]
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -79,21 +59,12 @@ def set_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-
 set_seed(42)
 
-# %% [code]
+
 import pytorch_lightning as pl
 
 
-# %% [markdown]
-# We'll be pytorch-lightning library for training. Most of the below code is adapted from here https://github.com/huggingface/transformers/blob/master/examples/lightning_base.py
-#
-# The trainer is generic and can be used for any text-2-text task. You'll just need to change the dataset. Rest of the code will stay unchanged for all the tasks.
-#
-# This is the most intresting and powrfull thing about the text-2-text format. You can fine-tune the model on variety of NLP tasks by just formulating the problem in text-2-text setting. No need to change hyperparameters, learning rate, optimizer or loss function. Just plug in your dataset and you are ready to go!
-
-# %% [code]
 class T5FineTuner(pl.LightningModule):
     def __init__(self, hparams):
         super(T5FineTuner, self).__init__()
@@ -171,10 +142,7 @@ class T5FineTuner(pl.LightningModule):
         return [optimizer]
 
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, second_order_closure=None):
-        if self.trainer.use_tpu:
-            xm.optimizer_step(optimizer)
-        else:
-            optimizer.step()
+        optimizer.step()
         optimizer.zero_grad()
         self.lr_scheduler.step()
 
@@ -232,12 +200,7 @@ class LoggingCallback(pl.Callback):
                         writer.write("{} = {}\n".format(key, str(metrics[key])))
 
 
-# %% [markdown]
-# Let's define the hyperparameters and other arguments. You can overide this dict for specific task as needed. While in most of cases you'll only need to change the data_dirand output_dir.
-#
-# Here the batch size is 8 and gradient_accumulation_steps are 8 so the effective batch size is 64
 
-# %% [code]
 args_dict = dict(
     data_dir="",  # path for data files
     output_dir="",  # path to save the checkpoints
@@ -261,31 +224,13 @@ args_dict = dict(
     seed=42,
 )
 
-# %% [code]
-!ls
 
-# %% [code]
-!ls.. / input /
-
-# %% [code] {"_kg_hide-output":true}
-train_path = "../input/xsquad/train.csv"
-val_path = "../input/xsquad/valid.csv"
-
-train = pd.read_csv(train_path)
-print(train.head())
-
-# tokenizer = AutoTokenizer.from_pretrained('google/mt5-small')
-
-# %% [code]
-df = pd.read_csv(train_path)
-df.columns
-
-# %% [code]
-df
+train_path = "train.txt"
+val_path = "dev.txt"
 
 
-# %% [code]
-class QuestionDataset(Dataset):
+#e->h
+class PosTagDataset(Dataset):
     def __init__(self, tokenizer, data_dir, type_path, max_len=30):
         self.path = os.path.join(data_dir, type_path + '.csv')
 
@@ -332,25 +277,18 @@ class QuestionDataset(Dataset):
             self.targets.append(tokenized_targets)
 
 
-# %% [code]
-tokenizer = AutoTokenizer.from_pretrained('google/mt5-large')
+tokenizer = AutoTokenizer.from_pretrained('mt5tokenizer')
 
-# %% [code]
-dataset = QuestionDataset(tokenizer, '../input/xsquad/', 'valid', 30)
+
+dataset = Dataset(tokenizer, '../input/xsquad/', 'valid', 30)
 print("Val dataset: ", len(dataset))
 
-# %% [code]
+
 data = dataset[20]
 print(tokenizer.decode(data['source_ids']))
 print(tokenizer.decode(data['target_ids']))
 
-# %% [code]
-!mkdir
-result
-!ls
-!pwd
 
-# %% [code]
 args_dict.update({'data_dir': '../input/xsquad', 'output_dir': '/kaggle/working/result', 'num_train_epochs': 10,
                   'max_seq_length': 220})
 args = argparse.Namespace(**args_dict)
@@ -375,9 +313,8 @@ train_params = dict(
 )
 
 
-# %% [code]
 def get_dataset(tokenizer, type_path, args):
-    return QuestionDataset(tokenizer=tokenizer, data_dir=args.data_dir, type_path=type_path,
+    return PosTagDataset(tokenizer=tokenizer, data_dir=args.data_dir, type_path=type_path,
                            max_len=args.max_seq_length)
 
 
@@ -398,32 +335,4 @@ model.model.save_pretrained("/kaggle/working/result")
 
 print("Saved model")
 
-# %% [code]
-!ls
 
-# %% [code]
-1 + 1
-
-# %% [code]
-!ls
-result
-
-# %% [code]
-!pwd
-
-# %% [code]
-!cp - r / kaggle / working / result / pytorch_model.bin / kaggle / working /
-!cp - r / kaggle / working / result / config.json / kaggle / working /
-
-# %% [code]
-!ls
-
-
-# %% [code]
-!rm - rf
-result
-
-# %% [code]
-!ls
-
-# %% [code]

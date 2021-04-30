@@ -68,7 +68,6 @@ X_train_tokenized = tokenizer.encode_plus(X_train, padding=True, truncation=True
 X_val_tokenized = tokenizer.encode_plus(X_val, padding=True, truncation=True, max_length=get_max_length(X_val))
 
 
-
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, encodings, labels=None):
         self.encodings = encodings
