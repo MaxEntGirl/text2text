@@ -54,7 +54,7 @@ def get_max_length(data):
     return int(np.percentile(lengths, 80)) +1
 
 
-data = read_data('train.txt')
+data = read_data('udp/train.txt')
 tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
 model = MT5ForConditionalGeneration.from_pretrained('mt5small')
 
@@ -130,7 +130,7 @@ trainer = Seq2SeqTrainer(
 trainer.train()
 
 # Load test data
-test_data = read_data("test.txt")
+test_data = read_data("udp/test.txt")
 X_test = test_data["review"]
 X_test_tokenized = tokenizer(X_test, padding=True, truncation=True, max_length=get_max_length(X_test))
 

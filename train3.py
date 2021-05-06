@@ -276,6 +276,7 @@ def train(model, iterator, optimizer, criterion, tag_pad_idx):
         
     return epoch_loss / len(iterator), epoch_acc / len(iterator)
 
+
 def evaluate(model, iterator, criterion, tag_pad_idx):
     
     epoch_loss = 0

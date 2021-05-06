@@ -23,6 +23,7 @@ WARMUP_STEPS = 200
 LOGGING_STEPS = 100
 LEARNING_RATE = 5e-05
 
+
 # baseline
 
 '''dataset['train'].features:
@@ -51,7 +52,7 @@ def reformat_for_postag(example):
     pairs = zip(example['tokens'],example['upos'])
     nl = []
     for p in pairs:
-        p = p[0]+'_'+UPOS_NAME[p[1]] 
+        p = p[0]+'_'+ p[1]
         nl.append(p)
     example['tgt_texts'] = '/'.join(nl)
     return example
@@ -76,7 +77,7 @@ print(dataset['train']['tgt_texts'][:10])
 #model_name = "allenai/unifiedqa-t5-small" # you can specify the model size here
 #tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-
+#看最长的句子是什么鬼
 max_length = get_max_length(tokenizer, dataset['train'], 'text', PERCENTILES[0])
 max_target_length = get_max_length(tokenizer, dataset['train'], 'tgt_texts', PERCENTILES[1])
 # use unique chr/digits instead of tags
@@ -121,6 +122,7 @@ def ud_metrics(eval_prediction): # write a new one with F1 or sth else
         f1 = (2 * precision * recall) / (precision + recall)
     return {"precision": precision, "recall": recall, "f1": f1}
 
+
 '''    predictions = [{'id': str(i), 'prediction': pred.strip().lower()} \
                  for i, pred in enumerate(predictions)]
     references = [{'id': str(i), 'reference': ref.strip().lower()} \
@@ -137,6 +139,7 @@ training_args = Seq2SeqTrainingArguments(
     per_device_train_batch_size=TRAIN_BATCH_SIZE,
     per_device_eval_batch_size=EVAL_BATCH_SIZE,
     warmup_steps=WARMUP_STEPS,
+    gradient_accumulation_steps=8,
 #    weight_decay=WEIGHT_DECAY,
     logging_dir='./logs/',
     evaluation_strategy="epoch",
@@ -154,31 +157,12 @@ trainer = Seq2SeqTrainer(
     args=training_args,
     train_dataset=dataset['train'],
     eval_dataset=dataset['validation'],
+
 #    optimizers=(torch.optim.SGD(model.parameters(),lr=LEARNING_RATE),None),
     compute_metrics=ud_metrics,   #Must take a:class:`~transformers.EvalPrediction` and return a dictionary string to metric values.
 )
 
-#print(trainer.evaluate(num_beams=2))
-'''  File "/home/di/Desktop/thesis/train1.py", line 132, in <module>
-    print(trainer.evaluate(num_beams=2))
-  File "/home/di/anaconda3/lib/python3.7/site-packages/transformers/trainer_seq2seq.py", line 74, in evaluate
-    return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
-  File "/home/di/anaconda3/lib/python3.7/site-packages/transformers/trainer.py", line 1513, in evaluate
-    metric_key_prefix=metric_key_prefix,
-  File "/home/di/anaconda3/lib/python3.7/site-packages/transformers/trainer.py", line 1629, in prediction_loop
-    for step, inputs in enumerate(dataloader):
-  File "/home/di/anaconda3/lib/python3.7/site-packages/torch/utils/data/dataloader.py", line 363, in __next__
-    data = self._next_data()
-  File "/home/di/anaconda3/lib/python3.7/site-packages/torch/utils/data/dataloader.py", line 403, in _next_data
-    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
-  File "/home/di/anaconda3/lib/python3.7/site-packages/torch/utils/data/_utils/fetch.py", line 47, in fetch
-    return self.collate_fn(data)
-  File "/home/di/anaconda3/lib/python3.7/site-packages/transformers/data/data_collator.py", line 121, in __call__
-    return_tensors="pt",
-  File "/home/di/anaconda3/lib/python3.7/site-packages/transformers/tokenization_utils_base.py", line 2641, in pad
-    "You should supply an encoding or a list of encodings to this method"
-ValueError: You should supply an encoding or a list of encodings to this methodthat includes input_ids, but you provided []
-'''
+
 print('enter training')
 
 trainer.train()
