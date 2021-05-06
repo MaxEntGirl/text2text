@@ -1,15 +1,4 @@
 
-import numpy as np
-import os
-
-for dirname, _, filenames in os.walk('/kaggle/input'):
-    for filename in filenames:
-        print(os.path.join(dirname, filename))
-
-
-train = pd.read_csv("../input/xsquad/train.csv")
-
-
 import argparse
 import glob
 import os
@@ -21,32 +10,17 @@ import re
 from itertools import chain
 from string import punctuation
 
-import nltk
-
-nltk.download('punkt')
-from nltk.tokenize import sent_tokenize
-
 import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 
-# %% [code]
-train.head()
 
-# %% [code]
-train.shape
-
-# %% [code]
-pl.__version__
-
-
-
-# %% [code]
 from transformers import (
     AdamW,
     MT5ForConditionalGeneration,
+    MT5TokenizerFast,
     AutoTokenizer,
     get_linear_schedule_with_warmup
 )
@@ -62,16 +36,13 @@ def set_seed(seed):
 set_seed(42)
 
 
-import pytorch_lightning as pl
-
-
 class T5FineTuner(pl.LightningModule):
     def __init__(self, hparams):
         super(T5FineTuner, self).__init__()
         self.hparams = hparams
 
         self.model = MT5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
-        self.tokenizer = AutoTokenizer.from_pretrained(hparams.tokenizer_name_or_path)
+        self.tokenizer = MT5TokenizerFast.from_pretrained(hparams.tokenizer_name_or_path)
 
     def is_logger(self):
         return True
@@ -141,7 +112,8 @@ class T5FineTuner(pl.LightningModule):
         self.opt = optimizer
         return [optimizer]
 
-    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, second_order_closure=None):
+    def optimizer_step(self, epoch=None, batch_idx=None, optimizer=None, optimizer_idx=None, optimizer_closure=None,
+                       on_tpu=None, using_native_amp=None, using_lbfgs=None):
         optimizer.step()
         optimizer.zero_grad()
         self.lr_scheduler.step()
@@ -200,13 +172,12 @@ class LoggingCallback(pl.Callback):
                         writer.write("{} = {}\n".format(key, str(metrics[key])))
 
 
-
 args_dict = dict(
     data_dir="",  # path for data files
     output_dir="",  # path to save the checkpoints
-    model_name_or_path='google/mt5-base',
-    tokenizer_name_or_path='google/mt5-base',
-    max_seq_length=512,
+    model_name_or_path='mt5small',
+    tokenizer_name_or_path='mt5tokenizer',
+    max_seq_length=140,
     learning_rate=3e-4,
     weight_decay=0.0,
     adam_epsilon=1e-8,
@@ -214,8 +185,8 @@ args_dict = dict(
     train_batch_size=8,
     eval_batch_size=8,
     num_train_epochs=2,
-    gradient_accumulation_steps=8,
-    n_gpu=1,
+    gradient_accumulation_steps=1,
+    n_gpu=0,
     early_stop_callback=False,
     fp_16=False,  # if you want to enable 16-bit training then install apex and set this to true
     opt_level='O1',
@@ -225,17 +196,17 @@ args_dict = dict(
 )
 
 
-train_path = "train.txt"
-val_path = "dev.txt"
+train_path = "train.csv"
+val_path = "valid.csv"
 
 
 #e->h
-class PosTagDataset(Dataset):
+class PostagDataset(Dataset):
     def __init__(self, tokenizer, data_dir, type_path, max_len=30):
         self.path = os.path.join(data_dir, type_path + '.csv')
 
-        self.english = 'context'
-        self.hindi = 'question'
+        self.input = 'src'
+        self.target = 'tgt'
         self.data = pd.read_csv(self.path)
 
         self.max_len = max_len
@@ -259,9 +230,9 @@ class PosTagDataset(Dataset):
 
     def _build(self):
         for idx in range(len(self.data)):
-            input_text, output_text = self.data.loc[idx, self.english], self.data.loc[idx, self.hindi]
+            input_text, output_text = self.data.loc[idx, self.input], self.data.loc[idx, self.target]
 
-            input_ = "Hindi Context: %s" % (input_text)
+            input_ = "Input text: %s" % (input_text)
             target = "%s " % (output_text)
 
             # tokenize inputs
@@ -277,10 +248,10 @@ class PosTagDataset(Dataset):
             self.targets.append(tokenized_targets)
 
 
-tokenizer = AutoTokenizer.from_pretrained('mt5tokenizer')
+tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
 
 
-dataset = Dataset(tokenizer, '../input/xsquad/', 'valid', 30)
+dataset = PostagDataset(tokenizer, 'ctb', 'valid', 50)
 print("Val dataset: ", len(dataset))
 
 
@@ -289,14 +260,14 @@ print(tokenizer.decode(data['source_ids']))
 print(tokenizer.decode(data['target_ids']))
 
 
-args_dict.update({'data_dir': '../input/xsquad', 'output_dir': '/kaggle/working/result', 'num_train_epochs': 10,
+args_dict.update({'data_dir': 'ctb', 'output_dir': 'ctbresult', 'num_train_epochs': 10,
                   'max_seq_length': 220})
 args = argparse.Namespace(**args_dict)
 print(args_dict)
 
 # %% [code]
+# %% [code]
 checkpoint_callback = pl.callbacks.ModelCheckpoint(
-
     period=1, filepath=args.output_dir, prefix="checkpoint", monitor="val_loss", mode="min", save_top_k=1
 )
 
@@ -304,7 +275,7 @@ train_params = dict(
     accumulate_grad_batches=args.gradient_accumulation_steps,
     gpus=args.n_gpu,
     max_epochs=args.num_train_epochs,
-    early_stop_callback=False,
+#    early_stop_callback=False,
     precision=16 if args.fp_16 else 32,
     amp_level=args.opt_level,
     gradient_clip_val=args.max_grad_norm,
@@ -314,7 +285,7 @@ train_params = dict(
 
 
 def get_dataset(tokenizer, type_path, args):
-    return PosTagDataset(tokenizer=tokenizer, data_dir=args.data_dir, type_path=type_path,
+    return PostagDataset(tokenizer=tokenizer, data_dir=args.data_dir, type_path=type_path,
                            max_len=args.max_seq_length)
 
 
@@ -331,7 +302,7 @@ trainer.fit(model)
 print("training finished")
 
 print("Saving model")
-model.model.save_pretrained("/kaggle/working/result")
+model.model.save_pretrained("ctb/result")
 
 print("Saved model")
 
