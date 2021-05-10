@@ -16,11 +16,11 @@ sys.path.append('/home/di/Desktop/thesis/')
 NUM_EPOCHS = 20
 PERCENTILES = (80, 100)
 
-TRAIN_BATCH_SIZE = 8         # maybe more stable update with bigger batch, gradient_accumulation_steps trade off with batch size
+TRAIN_BATCH_SIZE = 1         # maybe more stable update with bigger batch, gradient_accumulation_steps trade off with batch size
 EVAL_BATCH_SIZE = 1
 WARMUP_STEPS = 200
 #WEIGHT_DECAY = 0.01
-LOGGING_STEPS = 100
+LOGGING_STEPS = 3000
 LEARNING_RATE = 5e-05
 
 
@@ -47,12 +47,14 @@ def reformat_for_seg(example):
     example['tgt_texts'] = '_'.join(example['tokens']) #convert it to a str
     return example
 
+# figure out what errors it makes; constrained beam search; baseline -bert encoder / beginning-inside tag
+
 
 def reformat_for_postag(example):
     pairs = zip(example['tokens'],example['upos'])
     nl = []
     for p in pairs:
-        p = p[0]+'_'+ p[1]
+        p = p[0]+'_'+ str(p[1])
         nl.append(p)
     example['tgt_texts'] = '/'.join(nl)
     return example
@@ -169,6 +171,6 @@ trainer.train()
 
 
 print(trainer.evaluate())
-print(trainer.evaluate(num_beams=2))
+print(trainer.evaluate(num_beams=2,max_length=500))
 
 #C:\Users\El\.cache\huggingface\datasets\squad\plain_text\1.0.0\4

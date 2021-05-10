@@ -132,7 +132,7 @@ def extract(path):
 
 
 def write(path,data):
-    with open(path, "w") as csvfile:
+    with open(path, "w") as csvfile:  #encoding='utf-8',newline=''
         writer = csv.writer(csvfile)
         writer.writerow(["src", "tgt"])
         writer.writerows(data)
