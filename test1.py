@@ -9,10 +9,10 @@ from trainudp import PostagDataset,T5FineTuner,args
 
 
 tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
-dataset = PostagDataset(tokenizer, 'udp', 'test',  max_len=140)
+dataset = PostagDataset(tokenizer, 'udp', 'test',  max_len=200)
 loader = DataLoader(dataset, batch_size=8, num_workers=1)
 model = T5FineTuner(args)
-model.model=model.model.from_pretrained('results/checkpoint-9500')
+model.model=model.model.from_pretrained('udp/result')
 model.model.eval()
 outputs = []
 targets = []
@@ -20,7 +20,7 @@ f1_list=[]
 
 if __name__ == '__main__':
     torch.multiprocessing.freeze_support()
-    device = "cuda:0"
+    device = "cuda"
     model = model.to(device)
     truep, ref, pred = 0, 0, 0
     for batch in tqdm(loader):

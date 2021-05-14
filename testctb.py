@@ -2,8 +2,7 @@
 import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-from sklearn import metrics
-import pytorch_lightning as pl
+import csv
 from transformers import MT5TokenizerFast,MT5ForConditionalGeneration
 from trainctb import PostagDataset,T5FineTuner,args
 
@@ -22,7 +21,8 @@ if __name__ == '__main__':
     torch.multiprocessing.freeze_support()
     device = "cuda:0"
     model = model.to(device)
-    truep, ref, pred = 0, 0, 0
+#    truep, ref, pred = 0, 0, 0
+    data=[]
     for batch in tqdm(loader):
         outs = model.model.generate(input_ids=batch['source_ids'].cuda(),
                                     attention_mask=batch['source_mask'].cuda(),
@@ -37,8 +37,21 @@ if __name__ == '__main__':
                                              skip_special_tokens=True)
         references = tokenizer.batch_decode(batch['target_ids'],
                                             skip_special_tokens=True)
-          # not batchwise
-        for p, r in zip(predictions, references):
+        for r,p in zip(references,predictions):
+            pr = set(p.split('/'))
+            re = set(r.split('/'))
+            truep = len(pr.intersection(re))
+            ref = len(re)
+            pred = len(pr)
+            precision = truep / pred
+            recall = truep / ref
+            if precision == 0 and recall == 0:
+                f1 = 0
+            else:
+                f1 = (2 * precision * recall) / (precision + recall)
+            data.append([f1,r, p])
+
+        '''for p, r in zip(predictions, references):
             p = set(p.split('/'))
             r = set(r.split('/'))
             tp = len(p.intersection(r))
@@ -46,6 +59,7 @@ if __name__ == '__main__':
             ref += len(r)
             pred += len(p)
 
+        
     precision = truep / pred
     recall = truep / ref
     if precision == 0 and recall == 0:
@@ -53,6 +67,9 @@ if __name__ == '__main__':
     else:
         f1 = (2 * precision * recall) / (precision + recall)
 
-
-
-    print(f1)
+    print(f1)'''
+    print(len(data))
+    with open('ctbpred.csv', "w",encoding='utf-8',newline='') as csvfile:  #
+        writer = csv.writer(csvfile)
+        writer.writerow(['f1',"ref", "pred"])
+        writer.writerows(data)

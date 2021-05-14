@@ -43,6 +43,8 @@ class T5FineTuner(pl.LightningModule):
 
         self.model = MT5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = MT5TokenizerFast.from_pretrained(hparams.tokenizer_name_or_path)
+        self.model.get_output_embeddings().weight.requires_grad = False
+        self.model.get_input_embeddings().weight.requires_grad = False
 
     def is_logger(self):
         return True
@@ -84,7 +86,7 @@ class T5FineTuner(pl.LightningModule):
         tensorboard_logs = {"avg_train_loss": avg_train_loss}
         return {"avg_train_loss": avg_train_loss, "log": tensorboard_logs, 'progress_bar': tensorboard_logs}
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx):  # add generation to see the scores
         loss = self._step(batch)
         return {"val_loss": loss}
 
@@ -126,7 +128,7 @@ class T5FineTuner(pl.LightningModule):
     def train_dataloader(self):
         train_dataset = get_dataset(tokenizer=self.tokenizer, type_path="train", args=self.hparams)
         dataloader = DataLoader(train_dataset, batch_size=self.hparams.train_batch_size, drop_last=True, shuffle=True,
-                                num_workers=4)
+                                num_workers=1)
         t_total = (
                 (len(dataloader.dataset) // (self.hparams.train_batch_size * max(1, self.hparams.n_gpu)))
                 // self.hparams.gradient_accumulation_steps
@@ -177,16 +179,16 @@ args_dict = dict(
     output_dir="",  # path to save the checkpoints
     model_name_or_path='mt5small',
     tokenizer_name_or_path='mt5tokenizer',
-    max_seq_length=140,
+    max_seq_length=30,
     learning_rate=3e-4,
     weight_decay=0.0,
     adam_epsilon=1e-8,
     warmup_steps=0,
-    train_batch_size=8,
+    train_batch_size=1,
     eval_batch_size=8,
     num_train_epochs=2,
-    gradient_accumulation_steps=1,
-    n_gpu=0,
+    gradient_accumulation_steps=8,
+    n_gpu=1,
     early_stop_callback=False,
     fp_16=False,  # if you want to enable 16-bit training then install apex and set this to true
     opt_level='O1',
@@ -194,7 +196,10 @@ args_dict = dict(
     max_grad_norm=1.0,  # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
     seed=42,
 )
-
+''''  T5base, 8 V100 GPUs with a batch size of 8 per GPU; the AdamW optimizer(Kingma & Ba, 2015; ' 
+'Loshchilov & Hutter, 2019); linear learning rate decay starting from 0.0005;' 
+'maximum input/output sequence length equal to 256 tokens at training time (longer sequences aretruncated), except for relation classification, coreference resolution, and dialogue state tracking
+'The  number  of  fine-tuning  epochs  is  adjusted  depending  on  the  size  of  the  dataset,  asdescribed later.'''
 
 train_path = "train.csv"
 val_path = "valid.csv"
@@ -223,8 +228,8 @@ class PostagDataset(Dataset):
         source_ids = self.inputs[index]["input_ids"].squeeze()
         target_ids = self.targets[index]["input_ids"].squeeze()
 
-        src_mask = self.inputs[index]["attention_mask"].squeeze()  # might need to squeeze
-        target_mask = self.targets[index]["attention_mask"].squeeze()  # might need to squeeze
+        src_mask = self.inputs[index]["attention_mask"].squeeze()
+        target_mask = self.targets[index]["attention_mask"].squeeze()
 
         return {"source_ids": source_ids, "source_mask": src_mask, "target_ids": target_ids, "target_mask": target_mask}
 
@@ -237,11 +242,11 @@ class PostagDataset(Dataset):
 
             # tokenize inputs
             tokenized_inputs = self.tokenizer.batch_encode_plus(
-                [input_], max_length=200, pad_to_max_length=True, return_tensors="pt"
+                [input_], max_length=200, padding='max_length', truncation=True, return_tensors="pt"
             )
             # tokenize targets
             tokenized_targets = self.tokenizer.batch_encode_plus(
-                [target], max_length=20, pad_to_max_length=True, return_tensors="pt"
+                [target], max_length=200, padding='max_length', truncation=True,return_tensors="pt"
             )
 
             self.inputs.append(tokenized_inputs)
@@ -251,22 +256,21 @@ class PostagDataset(Dataset):
 tokenizer = MT5TokenizerFast.from_pretrained('mt5tokenizer')
 
 
-dataset = PostagDataset(tokenizer, 'ctb', 'valid', 50)
+dataset = PostagDataset(tokenizer, 'udp', 'valid', 50)
 print("Val dataset: ", len(dataset))
 
 
 data = dataset[20]
-print(tokenizer.decode(data['source_ids']))
-print(tokenizer.decode(data['target_ids']))
+print('first 20 src ids:', tokenizer.decode(data['source_ids']))
+print('tgt ids:', tokenizer.decode(data['target_ids']))
 
 
-args_dict.update({'data_dir': 'ctb', 'output_dir': 'ctbresult', 'num_train_epochs': 10,
-                  'max_seq_length': 220})
+args_dict.update({'data_dir': 'udp', 'output_dir': 'udpresult', 'num_train_epochs': 10,
+                  'max_seq_length': 140})
 args = argparse.Namespace(**args_dict)
-print(args_dict)
+#print(args_dict)
 
-# %% [code]
-# %% [code]
+
 checkpoint_callback = pl.callbacks.ModelCheckpoint(
     period=1, filepath=args.output_dir, prefix="checkpoint", monitor="val_loss", mode="min", save_top_k=1
 )
@@ -289,21 +293,22 @@ def get_dataset(tokenizer, type_path, args):
                            max_len=args.max_seq_length)
 
 
-# %% [code]
-print("Initialize model")
-model = T5FineTuner(args)
+if __name__ == '__main__':
+    print("Initialize model")
+    model = T5FineTuner(args)
 
-trainer = pl.Trainer(**train_params)
+    trainer = pl.Trainer(**train_params)
+    torch.multiprocessing.freeze_support()  #RuntimeError: An attempt has been made to start a new process before the current process has finished its bootstrapping phase.
 
-# %% [code]
-print(" Training model")
-trainer.fit(model)
+    print(" Training model")
+    trainer.fit(model)
 
-print("training finished")
+    print("training finished")
 
-print("Saving model")
-model.model.save_pretrained("ctb/result")
+    print("Saving model")
+    model.model.save_pretrained("udp/result")
+    model.eval()
 
-print("Saved model")
+    print("Saved model")
 
 
