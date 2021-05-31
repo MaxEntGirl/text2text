@@ -1,5 +1,7 @@
 # -*- coding:utf-8 -*-
 # Filename: make_ctb.py
+# 切分：https://bbs.hankcs.com/t/topic/3024
+# 开源：https://wakespace.lib.wfu.edu/handle/10339/39379
 # Author：hankcs
 import argparse
 from os import listdir

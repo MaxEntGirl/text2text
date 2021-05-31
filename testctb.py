@@ -17,6 +17,7 @@ outputs = []
 targets = []
 f1_list=[]
 
+
 if __name__ == '__main__':
     torch.multiprocessing.freeze_support()
     device = "cuda:0"
@@ -26,7 +27,7 @@ if __name__ == '__main__':
     for batch in tqdm(loader):
         outs = model.model.generate(input_ids=batch['source_ids'].cuda(),
                                     attention_mask=batch['source_mask'].cuda(),
-                                    max_length=140)
+                                    max_length=250)
 
         '''pred = [tokenizer.decode(ids) for ids in outs]
         target = [tokenizer.decode(ids) for ids in batch["target_ids"]]
@@ -69,7 +70,7 @@ if __name__ == '__main__':
 
     print(f1)'''
     print(len(data))
-    with open('ctbpred.csv', "w",encoding='utf-8',newline='') as csvfile:  #
+    with open('ctbpred2.csv', "w",encoding='utf-8',newline='') as csvfile:  #
         writer = csv.writer(csvfile)
         writer.writerow(['f1',"ref", "pred"])
         writer.writerows(data)
